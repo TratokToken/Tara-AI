@@ -1,0 +1,17 @@
+{
+  "name": "tara-api-examples-javascript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable Node.js examples for the Tara API",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "chat": "node chat_basic.mjs",
+    "agent": "node agent_basic.mjs",
+    "agent:tools": "node agent_tools.mjs",
+    "agent:loop": "node agent_loop.mjs"
+  },
+  "license": "MIT"
+}
