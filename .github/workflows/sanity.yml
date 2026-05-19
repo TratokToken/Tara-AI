@@ -1,0 +1,59 @@
+name: sanity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-syntax:
+    name: Python syntax + import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ./sdk/python
+      - run: python -c "import tara; print(tara.__version__)"
+      - name: Compile all examples (no execution)
+        run: python -m py_compile examples/python/*.py
+
+  node-syntax:
+    name: Node syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check SDK loads
+        run: node --check sdk/javascript/src/client.js
+      - name: Check examples parse
+        run: |
+          for f in examples/javascript/*.mjs; do
+            node --check "$f"
+          done
+
+  php-syntax:
+    name: PHP syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+      - name: Lint SDK
+        run: find sdk/php -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Lint examples
+        run: find examples/php -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  openapi-validate:
+    name: OpenAPI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npx --yes @redocly/cli@latest lint openapi/tara-api.yaml
