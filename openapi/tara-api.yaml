@@ -1,0 +1,498 @@
+openapi: 3.0.3
+info:
+  title: Tara API
+  version: "1.1.0"
+  description: |
+    The public API for Tara — Tratok's privacy-first AI assistant.
+
+    Two endpoints:
+
+    * **`/api/v1/chat`** — simple string-in / string-out chat.
+    * **`/api/v1/agent`** — Anthropic Messages-shape with tool use.
+
+    Authentication is via Bearer token. Get a free key by signing up at
+    <https://tara.tratok.com/register.php>.
+
+    See the [docs in this repo](https://github.com/tratok/tara-api/tree/main/docs)
+    for a human-readable reference. This OpenAPI spec is the machine-readable
+    surface — use it with `openapi-generator` to scaffold a client in any
+    language we don't already ship.
+
+  contact:
+    name: Tara API support
+    url: https://tara.tratok.com/account.php
+  license:
+    name: MIT (docs and clients only)
+    url: https://github.com/tratok/tara-api/blob/main/LICENSE
+
+servers:
+  - url: https://tara.tratok.com/api/v1
+    description: Production
+
+security:
+  - BearerAuth: []
+
+paths:
+  /chat.php:
+    post:
+      operationId: chat
+      summary: Send a chat message
+      description: |
+        Simple chat endpoint. One user message in, one assistant reply out.
+        Maintain conversation context by passing prior turns in `history`.
+      tags: [chat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              minimal:
+                summary: Minimal call
+                value:
+                  message: "What is Tratok?"
+              with_history:
+                summary: Multi-turn
+                value:
+                  message: "What's the weather like in May?"
+                  history:
+                    - { role: user,      content: "I'm going to Dubai." }
+                    - { role: assistant, content: "Great! When?" }
+                  max_tokens: 512
+                  temperature: 0.7
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "406": { $ref: '#/components/responses/NotAcceptable' }
+        "413": { $ref: '#/components/responses/PayloadTooLarge' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimit' }
+        "5XX": { $ref: '#/components/responses/ServerError' }
+
+  /agent.php:
+    post:
+      operationId: agent
+      summary: Anthropic Messages-shape call with optional tool use
+      description: |
+        Full Anthropic Messages API surface (request- and response-compatible
+        with `api.anthropic.com/v1/messages`, with the differences listed in
+        the docs).
+      tags: [agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRequest'
+            examples:
+              minimal:
+                summary: Just a user message
+                value:
+                  messages:
+                    - { role: user, content: "Plan a 3-day trip to Dubai." }
+                  max_tokens: 1024
+              with_tools:
+                summary: Tool use
+                value:
+                  messages:
+                    - { role: user, content: "What's the weather in Dubai?" }
+                  tools:
+                    - name: get_weather
+                      description: "Get current weather for a city. Returns temp_c and condition."
+                      input_schema:
+                        type: object
+                        properties:
+                          city: { type: string }
+                        required: [city]
+                  max_tokens: 1024
+              tool_result_followup:
+                summary: Returning a tool result
+                value:
+                  messages:
+                    - { role: user, content: "What's the weather in Dubai?" }
+                    - role: assistant
+                      content:
+                        - { type: text, text: "Let me check." }
+                        - type: tool_use
+                          id: toolu_xyz789
+                          name: get_weather
+                          input: { city: "Dubai" }
+                    - role: user
+                      content:
+                        - type: tool_result
+                          tool_use_id: toolu_xyz789
+                          content: '{"temp_c":37,"condition":"sunny"}'
+                  tools: []
+                  max_tokens: 1024
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "406": { $ref: '#/components/responses/NotAcceptable' }
+        "413": { $ref: '#/components/responses/PayloadTooLarge' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimit' }
+        "5XX": { $ref: '#/components/responses/ServerError' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: tara_sk_...
+      description: |
+        Send your API key as `Authorization: Bearer tara_sk_...`.
+        Get a key at <https://tara.tratok.com/register.php>.
+
+  schemas:
+
+    # ---- /chat ---------------------------------------------------------
+
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: User's input. UTF-8, ≤ 16,000 characters.
+          maxLength: 16000
+        history:
+          type: array
+          description: Prior turns (oldest first). ≤ 40 entries.
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/ChatHistoryEntry'
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4096
+          default: 1024
+        temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.7
+
+    ChatHistoryEntry:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    ChatResponse:
+      type: object
+      required: [ok, reply, usage]
+      properties:
+        ok: { type: boolean, example: true }
+        reply: { type: string }
+        usage:
+          $ref: '#/components/schemas/Usage'
+        request_id:
+          type: string
+          example: req_a1b2c3d4e5f6
+
+    # ---- /agent --------------------------------------------------------
+
+    AgentRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Message'
+        system:
+          type: string
+          description: Additional system instructions for this conversation.
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolDefinition'
+        tool_choice:
+          $ref: '#/components/schemas/ToolChoice'
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4096
+          default: 1024
+        temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.7
+        model:
+          type: string
+          description: Accepted but ignored — model is server-managed.
+        stream:
+          type: boolean
+          description: Accepted but ignored — Tara responses are always atomic.
+
+    Message:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: '#/components/schemas/ContentBlock'
+
+    ContentBlock:
+      oneOf:
+        - $ref: '#/components/schemas/TextBlock'
+        - $ref: '#/components/schemas/ToolUseBlock'
+        - $ref: '#/components/schemas/ToolResultBlock'
+      discriminator:
+        propertyName: type
+        mapping:
+          text:        '#/components/schemas/TextBlock'
+          tool_use:    '#/components/schemas/ToolUseBlock'
+          tool_result: '#/components/schemas/ToolResultBlock'
+
+    TextBlock:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+
+    ToolUseBlock:
+      type: object
+      required: [type, id, name, input]
+      properties:
+        type:
+          type: string
+          enum: [tool_use]
+        id:
+          type: string
+          example: toolu_xyz789
+        name:
+          type: string
+          example: get_weather
+        input:
+          type: object
+          additionalProperties: true
+
+    ToolResultBlock:
+      type: object
+      required: [type, tool_use_id, content]
+      properties:
+        type:
+          type: string
+          enum: [tool_result]
+        tool_use_id:
+          type: string
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: '#/components/schemas/TextBlock'
+        is_error:
+          type: boolean
+          default: false
+
+    ToolDefinition:
+      type: object
+      required: [name, description, input_schema]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+        description:
+          type: string
+          description: Human-readable description of the tool. Used by the model to decide when to call it.
+        input_schema:
+          type: object
+          description: JSON Schema (Draft 7 subset) for the tool's input.
+
+    ToolChoice:
+      oneOf:
+        - type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [auto, any, none]
+        - type: object
+          required: [type, name]
+          properties:
+            type:
+              type: string
+              enum: [tool]
+            name:
+              type: string
+
+    AgentResponse:
+      type: object
+      required: [id, type, role, content, stop_reason, usage]
+      properties:
+        id:
+          type: string
+          example: msg_a1b2c3d4e5f6
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/TextBlock'
+              - $ref: '#/components/schemas/ToolUseBlock'
+        stop_reason:
+          type: string
+          enum: [end_turn, tool_use, max_tokens, stop_sequence]
+        stop_sequence:
+          type: string
+          nullable: true
+        usage:
+          $ref: '#/components/schemas/Usage'
+
+    # ---- common ---------------------------------------------------------
+
+    Usage:
+      type: object
+      required: [input_tokens, output_tokens, total_tokens]
+      properties:
+        input_tokens:  { type: integer }
+        output_tokens: { type: integer }
+        total_tokens:  { type: integer }
+
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type:
+              type: string
+              enum:
+                - invalid_request
+                - missing_field
+                - missing_authorization
+                - invalid_authorization
+                - invalid_key
+                - account_pending
+                - account_revoked
+                - forbidden
+                - not_found
+                - method_not_allowed
+                - not_acceptable
+                - payload_too_large
+                - validation_error
+                - rate_limit
+                - internal_error
+                - upstream_error
+                - service_unavailable
+                - upstream_timeout
+            message:
+              type: string
+            field:
+              type: string
+              description: Dotted path to the offending field, when applicable.
+            retry_after_seconds:
+              type: integer
+              description: Present on 429 responses.
+            request_id:
+              type: string
+
+  responses:
+    BadRequest:
+      description: Malformed request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Account pending, revoked, or not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotAcceptable:
+      description: WAF blocked the request (often a curl default UA)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Request body exceeded 256 KB
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Field value invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimit:
+      description: Quota exceeded
+      headers:
+        Retry-After:
+          schema: { type: integer }
+        X-RateLimit-Limit-Requests:     { schema: { type: integer } }
+        X-RateLimit-Remaining-Requests: { schema: { type: integer } }
+        X-RateLimit-Reset-Requests:     { schema: { type: integer } }
+        X-RateLimit-Limit-Tokens:       { schema: { type: integer } }
+        X-RateLimit-Remaining-Tokens:   { schema: { type: integer } }
+        X-RateLimit-Reset-Tokens:       { schema: { type: integer } }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServerError:
+      description: 5xx — retry with exponential backoff
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: chat
+    description: Simple string-in / string-out chat
+  - name: agent
+    description: Anthropic Messages-shape with tool use
