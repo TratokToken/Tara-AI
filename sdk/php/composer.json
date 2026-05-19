@@ -1,0 +1,19 @@
+{
+    "name": "tratok/tara-client",
+    "description": "PHP client for the Tara API (tara.tratok.com)",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["tara", "tratok", "ai", "llm", "anthropic"],
+    "homepage": "https://tara.tratok.com",
+    "require": {
+        "php": ">=8.0",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tratok\\Tara\\": "src/"
+        }
+    },
+    "minimum-stability": "stable"
+}
