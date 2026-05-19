@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: API access / account questions
+    url: https://tara.tratok.com/account.php
+    about: Account approval, key issues, quota increases — use the contact form here, not GitHub.
+  - name: Security issue
+    url: https://github.com/tratok/tara-api/blob/main/SECURITY.md
+    about: For vulnerabilities, please follow the responsible disclosure process — don't open a public issue.
+  - name: Full API documentation
+    url: https://tara.tratok.com/api_docs.php
+    about: The canonical, always-up-to-date docs.
